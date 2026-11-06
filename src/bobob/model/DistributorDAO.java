@@ -1,85 +1,80 @@
 package bobob.model;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.util.ArrayList;
+import org.hibernate.HibernateException;
+import org.hibernate.Session;
+import org.hibernate.Transaction;
+
 import java.util.List;
 
 public class DistributorDAO {
 
-    public List<Distributor> findAll() throws SQLException {
-        List<Distributor> distributors = new ArrayList<>();
-
-        try (Connection c = Database.getConnection();
-             PreparedStatement ps = c.prepareStatement(
-                 "SELECT id,nama FROM distributor ORDER BY nama");
-             ResultSet rs = ps.executeQuery()) {
-
-            while (rs.next()) {
-                distributors.add(new Distributor(
-                    rs.getInt("id"), rs.getString("nama")));
-            }
-        }
-
-        return distributors;
-    }
-
-    public Distributor findById(int id) throws SQLException {
-        try (Connection c = Database.getConnection();
-             PreparedStatement ps = c.prepareStatement(
-                 "SELECT id,nama FROM distributor WHERE id=?")) {
-
-            ps.setInt(1, id);
-
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) return null;
-                return new Distributor(
-                    rs.getInt("id"), rs.getString("nama"));
-            }
+    public List<Distributor> findAll() {
+        try (Session session = HibernateUtil.open()) {
+            return session.createQuery(
+                "from Distributor order by nama", Distributor.class
+            ).getResultList();
         }
     }
 
-    public void save(Integer id, String nama) throws SQLException {
-        try (Connection c = Database.getConnection()) {
-            if (id == null) {
-                try (PreparedStatement ps = c.prepareStatement(
-                    "INSERT INTO distributor(nama) VALUES(?)")) {
-                    ps.setString(1, nama);
-                    ps.executeUpdate();
-                }
-            } else {
-                try (PreparedStatement ps = c.prepareStatement(
-                    "UPDATE distributor SET nama=? WHERE id=?")) {
-                    ps.setString(1, nama);
-                    ps.setInt(2, id);
-                    ps.executeUpdate();
-                }
-            }
+    public Distributor findById(int id) {
+        try (Session session = HibernateUtil.open()) {
+            return session.get(Distributor.class, id);
         }
     }
 
-    public void delete(int id) throws SQLException {
-        try (Connection c = Database.getConnection()) {
-            try (PreparedStatement ps = c.prepareStatement(
-                "SELECT COUNT(*) FROM pengadaan WHERE distributor_id=?")) {
-                ps.setInt(1, id);
+    public void save(Integer id, String nama) {
+        try (Session session = HibernateUtil.open()) {
+            Transaction tx = session.beginTransaction();
 
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next() && rs.getInt(1) > 0) {
-                        throw new SQLException(
-                            "Distributor masih dipakai pada transaksi " +
-                            "pengadaan."
-                        );
+            try {
+                if (id == null) {
+                    session.persist(new Distributor(nama));
+                } else {
+                    Distributor distributor =
+                        session.get(Distributor.class, id);
+
+                    if (distributor == null) {
+                        throw new HibernateException(
+                            "Distributor tidak ditemukan.");
                     }
-                }
-            }
 
-            try (PreparedStatement ps = c.prepareStatement(
-                "DELETE FROM distributor WHERE id=?")) {
-                ps.setInt(1, id);
-                ps.executeUpdate();
+                    distributor.nama = nama;
+                }
+
+                tx.commit();
+            } catch (RuntimeException e) {
+                tx.rollback();
+                throw e;
+            }
+        }
+    }
+
+    public void delete(int id) {
+        try (Session session = HibernateUtil.open()) {
+            Transaction tx = session.beginTransaction();
+
+            try {
+                Long used = session.createQuery(
+                    "select count(p) from Pengadaan p " +
+                    "where p.distributorId = :id", Long.class
+                ).setParameter("id", id).uniqueResult();
+
+                if (used != null && used > 0) {
+                    throw new HibernateException(
+                        "Distributor masih dipakai pada transaksi pengadaan.");
+                }
+
+                Distributor distributor =
+                    session.get(Distributor.class, id);
+
+                if (distributor != null) {
+                    session.remove(distributor);
+                }
+
+                tx.commit();
+            } catch (RuntimeException e) {
+                tx.rollback();
+                throw e;
             }
         }
     }

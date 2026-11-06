@@ -8,7 +8,7 @@ import bobob.util.Format;
 import bobob.view.TransaksiView;
 
 import javax.swing.JPanel;
-import java.sql.SQLException;
+import org.hibernate.HibernateException;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -34,7 +34,7 @@ public class TransaksiController {
 
         try {
             view.setTransactions(transaksiDAO.findByDate(tanggal));
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }
@@ -53,7 +53,7 @@ public class TransaksiController {
         try {
             List<Barang> items = barangDAO.findAll();
             view.showTransactionDialog(null, items);
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }
@@ -65,7 +65,7 @@ public class TransaksiController {
 
             List<Barang> items = barangDAO.findAll();
             view.showTransactionDialog(transaction, items);
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }
@@ -76,7 +76,7 @@ public class TransaksiController {
         try {
             transaksiDAO.save(id, tanggal, barangId, price, qty);
             refresh();
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }
@@ -87,7 +87,7 @@ public class TransaksiController {
         try {
             transaksiDAO.delete(id);
             refresh();
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }

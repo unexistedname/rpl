@@ -2,6 +2,7 @@ package bobob;
 
 import bobob.controller.LoginController;
 import bobob.model.Database;
+import bobob.model.HibernateUtil;
 
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
@@ -13,7 +14,8 @@ public class Main {
         SwingUtilities.invokeLater(() -> {
             try {
                 Database.initSchema();
-            } catch (SQLException e) {
+                HibernateUtil.init();
+            } catch (SQLException | RuntimeException e) {
                 JOptionPane.showMessageDialog(
                     null,
                     "Gagal menyiapkan database: " + e.getMessage(),
@@ -22,6 +24,9 @@ public class Main {
                 );
                 return;
             }
+
+            Runtime.getRuntime().addShutdownHook(
+                new Thread(HibernateUtil::shutdown));
 
             new LoginController().start();
         });

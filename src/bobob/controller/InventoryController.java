@@ -5,7 +5,7 @@ import bobob.model.KategoriDAO;
 import bobob.view.InventoryView;
 
 import javax.swing.JPanel;
-import java.sql.SQLException;
+import org.hibernate.HibernateException;
 
 public class InventoryController {
 
@@ -26,7 +26,7 @@ public class InventoryController {
         try {
             view.setCategories(kategoriDAO.findAll());
             view.setItems(barangDAO.findAll());
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }
@@ -36,7 +36,7 @@ public class InventoryController {
             kategoriDAO.insert(nama);
             refresh();
             view.selectCategory(nama);
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showInfo(
                 "Kategori gagal ditambahkan. Pastikan nama kategori unik."
             );
@@ -48,7 +48,7 @@ public class InventoryController {
         try {
             barangDAO.insert(nama, kategoriId, stok, keterangan);
             refresh();
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }
@@ -57,7 +57,7 @@ public class InventoryController {
         try {
             barangDAO.updateStock(id, stok);
             refresh();
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }

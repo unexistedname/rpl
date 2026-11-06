@@ -6,7 +6,7 @@ import bobob.util.Period;
 import bobob.view.CashflowView;
 
 import javax.swing.JPanel;
-import java.sql.SQLException;
+import org.hibernate.HibernateException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -55,7 +55,7 @@ public class CashflowController {
 
             view.setData(income, expense, incomeTotal, expenseTotal);
 
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }
@@ -85,7 +85,7 @@ public class CashflowController {
             Cashflow entry = cashflowDAO.findById(id);
             if (entry == null) return;
             view.showTransactionDialog(entry);
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }
@@ -98,7 +98,7 @@ public class CashflowController {
             // transaksi penjualan di halaman Transaksi tidak ikut berubah
             anchor = tanggal;
             refresh();
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }
@@ -109,7 +109,7 @@ public class CashflowController {
         try {
             cashflowDAO.deleteEntry(id);
             refresh();
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }

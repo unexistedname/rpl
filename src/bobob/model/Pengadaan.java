@@ -1,15 +1,44 @@
 package bobob.model;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
+
+@Entity
+@Table(name = "pengadaan")
 public class Pengadaan {
 
-    public final int id;
-    public final String tanggal;
-    public final int barangId;
-    public final String namaBarang;
-    public final int jumlah;
-    public final double harga;
-    public final Integer distributorId;
-    public final String distributorNama;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    public int id;
+
+    @Column(nullable = false)
+    public String tanggal;
+
+    @Column(name = "barang_id", nullable = false)
+    public int barangId;
+
+    @Column(nullable = false)
+    public int jumlah;
+
+    @Column(nullable = false)
+    public double harga;
+
+    @Column(name = "distributor_id")
+    public Integer distributorId;
+
+    @Transient
+    public String namaBarang;
+
+    @Transient
+    public String distributorNama;
+
+    protected Pengadaan() {
+    }
 
     public Pengadaan(int id, String tanggal, int barangId,
                      String namaBarang, int jumlah, double harga,
@@ -22,6 +51,15 @@ public class Pengadaan {
         this.harga = harga;
         this.distributorId = distributorId;
         this.distributorNama = distributorNama;
+    }
+
+    public Pengadaan(String tanggal, int barangId, int jumlah,
+                     double harga, Integer distributorId) {
+        this.tanggal = tanggal;
+        this.barangId = barangId;
+        this.jumlah = jumlah;
+        this.harga = harga;
+        this.distributorId = distributorId;
     }
 
     public double total() {

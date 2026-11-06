@@ -1,261 +1,177 @@
 package bobob.model;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
+import org.hibernate.HibernateException;
+import org.hibernate.Session;
+import org.hibernate.Transaction;
+
 import java.time.LocalDate;
-import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class PengadaanDAO {
 
-    public List<Pengadaan> findByPeriod(LocalDate start, LocalDate end)
-                                        throws SQLException {
-        List<Pengadaan> purchases = new ArrayList<>();
+    public List<Pengadaan> findByPeriod(LocalDate start, LocalDate end) {
+        try (Session session = HibernateUtil.open()) {
+            List<Pengadaan> purchases = session.createQuery(
+                "from Pengadaan where tanggal between :start and :end " +
+                "order by tanggal, id", Pengadaan.class
+            ).setParameter("start", start.toString())
+             .setParameter("end", end.toString())
+             .getResultList();
 
-        String sql =
-            "SELECT p.id,p.tanggal,p.barang_id,b.nama,p.jumlah,p.harga," +
-            "p.distributor_id,d.nama AS distributor " +
-            "FROM pengadaan p " +
-            "LEFT JOIN barang b ON p.barang_id=b.id " +
-            "LEFT JOIN distributor d ON p.distributor_id=d.id " +
-            "WHERE p.tanggal BETWEEN ? AND ? " +
-            "ORDER BY p.tanggal,p.id";
-
-        try (Connection c = Database.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-
-            ps.setString(1, start.toString());
-            ps.setString(2, end.toString());
-
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    Integer distributorId = rs.getInt("distributor_id");
-                    if (rs.wasNull()) distributorId = null;
-
-                    purchases.add(new Pengadaan(
-                        rs.getInt("id"),
-                        rs.getString("tanggal"),
-                        rs.getInt("barang_id"),
-                        rs.getString("nama"),
-                        rs.getInt("jumlah"),
-                        rs.getDouble("harga"),
-                        distributorId,
-                        rs.getString("distributor")
-                    ));
-                }
-            }
+            fillNames(session, purchases);
+            return purchases;
         }
-
-        return purchases;
     }
 
-    public Pengadaan findById(int id) throws SQLException {
-        String sql =
-            "SELECT p.id,p.tanggal,p.barang_id,b.nama,p.jumlah,p.harga," +
-            "p.distributor_id,d.nama AS distributor " +
-            "FROM pengadaan p " +
-            "LEFT JOIN barang b ON p.barang_id=b.id " +
-            "LEFT JOIN distributor d ON p.distributor_id=d.id " +
-            "WHERE p.id=?";
+    public Pengadaan findById(int id) {
+        try (Session session = HibernateUtil.open()) {
+            Pengadaan purchase = session.get(Pengadaan.class, id);
 
-        try (Connection c = Database.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
+            if (purchase != null) {
+                fillNames(session, List.of(purchase));
+            }
 
-            ps.setInt(1, id);
+            return purchase;
+        }
+    }
 
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) return null;
+    private void fillNames(Session session, List<Pengadaan> purchases) {
+        Map<Integer, String> barangNames = new HashMap<>();
+        Map<Integer, String> distributorNames = new HashMap<>();
 
-                Integer distributorId = rs.getInt("distributor_id");
-                if (rs.wasNull()) distributorId = null;
+        for (Barang item : session.createQuery(
+            "from Barang", Barang.class
+        ).getResultList()) {
+            barangNames.put(item.id, item.nama);
+        }
 
-                return new Pengadaan(
-                    rs.getInt("id"),
-                    rs.getString("tanggal"),
-                    rs.getInt("barang_id"),
-                    rs.getString("nama"),
-                    rs.getInt("jumlah"),
-                    rs.getDouble("harga"),
-                    distributorId,
-                    rs.getString("distributor")
-                );
+        for (Distributor distributor : session.createQuery(
+            "from Distributor", Distributor.class
+        ).getResultList()) {
+            distributorNames.put(distributor.id, distributor.nama);
+        }
+
+        for (Pengadaan purchase : purchases) {
+            purchase.namaBarang = barangNames.get(purchase.barangId);
+
+            if (purchase.distributorId != null) {
+                purchase.distributorNama =
+                    distributorNames.get(purchase.distributorId);
             }
         }
     }
 
-    public boolean hasBefore(LocalDate date) throws SQLException {
-        return hasData("tanggal < ?", date.toString());
+    public boolean hasBefore(LocalDate date) {
+        return hasData("tanggal < :date", date.toString());
     }
 
-    public boolean hasAfter(LocalDate date) throws SQLException {
-        return hasData("tanggal > ?", date.toString());
+    public boolean hasAfter(LocalDate date) {
+        return hasData("tanggal > :date", date.toString());
     }
 
-    private boolean hasData(String condition, String value)
-                            throws SQLException {
-        try (Connection c = Database.getConnection();
-             PreparedStatement ps = c.prepareStatement(
-                 "SELECT COUNT(*) FROM pengadaan WHERE " + condition)) {
+    private boolean hasData(String condition, String value) {
+        try (Session session = HibernateUtil.open()) {
+            Long count = session.createQuery(
+                "select count(p) from Pengadaan p where " + condition,
+                Long.class
+            ).setParameter("date", value).uniqueResult();
 
-            ps.setString(1, value);
-
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() && rs.getInt(1) > 0;
-            }
+            return count != null && count > 0;
         }
     }
 
     public void save(Integer id, LocalDate date, int barangId,
-                     int jumlah, double harga, Integer distributorId)
-                     throws SQLException {
+                     int jumlah, double harga, Integer distributorId) {
 
-        try (Connection c = Database.getConnection()) {
-            c.setAutoCommit(false);
+        try (Session session = HibernateUtil.open()) {
+            Transaction tx = session.beginTransaction();
 
             try {
-                String namaBarang = BarangDAO.findName(c, barangId);
+                String namaBarang = BarangDAO.findName(session, barangId);
                 double total = jumlah * harga;
 
                 if (id == null) {
-                    int pengadaanId;
+                    Pengadaan pengadaan = new Pengadaan(
+                        date.toString(), barangId, jumlah, harga,
+                        distributorId);
 
-                    try (PreparedStatement ps = c.prepareStatement(
-                        "INSERT INTO pengadaan" +
-                        "(tanggal,barang_id,jumlah,harga,distributor_id) " +
-                        "VALUES(?,?,?,?,?)",
-                        Statement.RETURN_GENERATED_KEYS)) {
+                    session.persist(pengadaan);
+                    session.flush();
 
-                        ps.setString(1, date.toString());
-                        ps.setInt(2, barangId);
-                        ps.setInt(3, jumlah);
-                        ps.setDouble(4, harga);
-
-                        if (distributorId == null) {
-                            ps.setNull(5, java.sql.Types.INTEGER);
-                        } else {
-                            ps.setInt(5, distributorId);
-                        }
-
-                        ps.executeUpdate();
-
-                        try (ResultSet keys = ps.getGeneratedKeys()) {
-                            if (!keys.next()) {
-                                throw new SQLException(
-                                    "Gagal menyimpan pengadaan.");
-                            }
-                            pengadaanId = keys.getInt(1);
-                        }
-                    }
-
-                    BarangDAO.adjustStock(c, barangId, jumlah);
+                    BarangDAO.adjustStock(session, barangId, jumlah);
                     CashflowDAO.insertPengadaan(
-                        c, pengadaanId, date.toString(),
+                        session, pengadaan.id, date.toString(),
                         namaBarang, total
                     );
-
                 } else {
-                    int oldBarangId = 0;
-                    int oldJumlah = 0;
+                    Pengadaan pengadaan =
+                        session.get(Pengadaan.class, id);
 
-                    try (PreparedStatement ps = c.prepareStatement(
-                        "SELECT barang_id,jumlah FROM pengadaan WHERE id=?")) {
-                        ps.setInt(1, id);
-
-                        try (ResultSet rs = ps.executeQuery()) {
-                            if (!rs.next()) {
-                                throw new SQLException(
-                                    "Pengadaan tidak ditemukan.");
-                            }
-                            oldBarangId = rs.getInt("barang_id");
-                            oldJumlah = rs.getInt("jumlah");
-                        }
+                    if (pengadaan == null) {
+                        throw new HibernateException(
+                            "Pengadaan tidak ditemukan.");
                     }
 
-                    try (PreparedStatement ps = c.prepareStatement(
-                        "UPDATE pengadaan SET tanggal=?,barang_id=?," +
-                        "jumlah=?,harga=?,distributor_id=? WHERE id=?")) {
+                    int oldBarangId = pengadaan.barangId;
+                    int oldJumlah = pengadaan.jumlah;
 
-                        ps.setString(1, date.toString());
-                        ps.setInt(2, barangId);
-                        ps.setInt(3, jumlah);
-                        ps.setDouble(4, harga);
-
-                        if (distributorId == null) {
-                            ps.setNull(5, java.sql.Types.INTEGER);
-                        } else {
-                            ps.setInt(5, distributorId);
-                        }
-
-                        ps.setInt(6, id);
-                        ps.executeUpdate();
-                    }
+                    pengadaan.tanggal = date.toString();
+                    pengadaan.barangId = barangId;
+                    pengadaan.jumlah = jumlah;
+                    pengadaan.harga = harga;
+                    pengadaan.distributorId = distributorId;
 
                     if (oldBarangId == barangId) {
                         BarangDAO.adjustStock(
-                            c, barangId, jumlah - oldJumlah);
+                            session, barangId, jumlah - oldJumlah);
                     } else {
-                        BarangDAO.adjustStock(c, oldBarangId, -oldJumlah);
-                        BarangDAO.adjustStock(c, barangId, jumlah);
+                        BarangDAO.adjustStock(
+                            session, oldBarangId, -oldJumlah);
+                        BarangDAO.adjustStock(
+                            session, barangId, jumlah);
                     }
 
                     CashflowDAO.updatePengadaan(
-                        c, id, date.toString(), namaBarang, total
+                        session, id, date.toString(), namaBarang, total
                     );
                 }
 
-                c.commit();
-
-            } catch (SQLException e) {
-                c.rollback();
+                tx.commit();
+            } catch (RuntimeException e) {
+                tx.rollback();
                 throw e;
-            } finally {
-                c.setAutoCommit(true);
             }
         }
     }
 
-    public void delete(int id) throws SQLException {
-        try (Connection c = Database.getConnection()) {
-            c.setAutoCommit(false);
+    public void delete(int id) {
+        try (Session session = HibernateUtil.open()) {
+            Transaction tx = session.beginTransaction();
 
             try {
-                int barangId = 0;
-                int qty = 0;
+                Pengadaan pengadaan = session.get(Pengadaan.class, id);
 
-                try (PreparedStatement ps = c.prepareStatement(
-                    "SELECT barang_id,jumlah FROM pengadaan WHERE id=?")) {
-                    ps.setInt(1, id);
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        if (rs.next()) {
-                            barangId = rs.getInt("barang_id");
-                            qty = rs.getInt("jumlah");
-                        }
-                    }
+                if (pengadaan == null) {
+                    tx.commit();
+                    return;
                 }
 
-                CashflowDAO.deletePengadaan(c, id);
+                Integer barangId = pengadaan.barangId;
+                int qty = pengadaan.jumlah;
 
-                try (PreparedStatement ps = c.prepareStatement(
-                    "DELETE FROM pengadaan WHERE id=?")) {
-                    ps.setInt(1, id);
-                    ps.executeUpdate();
+                CashflowDAO.deletePengadaan(session, id);
+                session.remove(pengadaan);
+
+                if (barangId != null && barangId > 0) {
+                    BarangDAO.adjustStock(session, barangId, -qty);
                 }
 
-                if (barangId > 0) {
-                    BarangDAO.adjustStock(c, barangId, -qty);
-                }
-
-                c.commit();
-
-            } catch (SQLException e) {
-                c.rollback();
+                tx.commit();
+            } catch (RuntimeException e) {
+                tx.rollback();
                 throw e;
-            } finally {
-                c.setAutoCommit(true);
             }
         }
     }

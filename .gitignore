@@ -1,0 +1,11 @@
+build/
+dist/
+
+nbproject/private/
+
+*.class
+
+*.db-journal
+*.db-wal
+*.db-shm
+*.db.bak

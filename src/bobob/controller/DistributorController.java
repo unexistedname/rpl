@@ -9,7 +9,7 @@ import bobob.util.Period;
 import bobob.view.DistributorView;
 
 import javax.swing.JPanel;
-import java.sql.SQLException;
+import org.hibernate.HibernateException;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -45,7 +45,7 @@ public class DistributorController {
                 pengadaanDAO.findByPeriod(start, end),
                 distributorDAO.findAll()
             );
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }
@@ -73,7 +73,7 @@ public class DistributorController {
                 barangDAO.findAll(),
                 distributorDAO.findAll()
             );
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }
@@ -88,7 +88,7 @@ public class DistributorController {
                 barangDAO.findAll(),
                 distributorDAO.findAll()
             );
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }
@@ -100,7 +100,7 @@ public class DistributorController {
                 id, date, barangId, jumlah, harga, distributorId);
             anchor = date;
             refresh();
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }
@@ -111,7 +111,7 @@ public class DistributorController {
         try {
             pengadaanDAO.delete(id);
             refresh();
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }
@@ -125,7 +125,7 @@ public class DistributorController {
             Distributor distributor = distributorDAO.findById(id);
             if (distributor == null) return;
             view.showDistributorDialog(distributor);
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showError(e.getMessage());
         }
     }
@@ -134,7 +134,7 @@ public class DistributorController {
         try {
             distributorDAO.save(id, nama);
             refresh();
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showInfo(
                 "Gagal menyimpan distributor. " +
                 "Pastikan nama distributor unik."
@@ -148,7 +148,7 @@ public class DistributorController {
         try {
             distributorDAO.delete(id);
             refresh();
-        } catch (SQLException e) {
+        } catch (HibernateException e) {
             view.showWarning(e.getMessage());
         }
     }

@@ -1,314 +1,222 @@
 package bobob.model;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import org.hibernate.HibernateException;
+import org.hibernate.Session;
+import org.hibernate.Transaction;
+
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
 
 public class CashflowDAO {
 
-    public List<Cashflow> findByPeriod(LocalDate start, LocalDate end)
-                                      throws SQLException {
-        List<Cashflow> entries = new ArrayList<>();
-
-        String sql =
-            "SELECT id,jenis,tanggal,nama,biaya,kategori FROM cashflow " +
-            "WHERE tanggal BETWEEN ? AND ? ORDER BY tanggal,id";
-
-        try (Connection c = Database.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-
-            ps.setString(1, start.toString());
-            ps.setString(2, end.toString());
-
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    entries.add(new Cashflow(
-                        rs.getInt("id"),
-                        rs.getString("jenis"),
-                        rs.getString("tanggal"),
-                        rs.getString("nama"),
-                        rs.getDouble("biaya"),
-                        rs.getString("kategori")
-                    ));
-                }
-            }
-        }
-
-        return entries;
-    }
-
-    public Cashflow findById(int id) throws SQLException {
-        try (Connection c = Database.getConnection();
-             PreparedStatement ps = c.prepareStatement(
-                 "SELECT id,jenis,tanggal,nama,biaya,kategori " +
-                 "FROM cashflow WHERE id=?")) {
-
-            ps.setInt(1, id);
-
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) return null;
-
-                return new Cashflow(
-                    rs.getInt("id"),
-                    rs.getString("jenis"),
-                    rs.getString("tanggal"),
-                    rs.getString("nama"),
-                    rs.getDouble("biaya"),
-                    rs.getString("kategori")
-                );
-            }
+    public List<Cashflow> findByPeriod(LocalDate start, LocalDate end) {
+        try (Session session = HibernateUtil.open()) {
+            return session.createQuery(
+                "from Cashflow where tanggal between :start and :end " +
+                "order by tanggal, id", Cashflow.class
+            ).setParameter("start", start.toString())
+             .setParameter("end", end.toString())
+             .getResultList();
         }
     }
 
-    public boolean hasBefore(LocalDate date) throws SQLException {
-        return hasData("tanggal < ?", date.toString());
+    public Cashflow findById(int id) {
+        try (Session session = HibernateUtil.open()) {
+            return session.get(Cashflow.class, id);
+        }
     }
 
-    public boolean hasAfter(LocalDate date) throws SQLException {
-        return hasData("tanggal > ?", date.toString());
+    public boolean hasBefore(LocalDate date) {
+        return hasData("tanggal < :date", date.toString());
     }
 
-    private boolean hasData(String condition, String value)
-                            throws SQLException {
-        try (Connection c = Database.getConnection();
-             PreparedStatement ps = c.prepareStatement(
-                 "SELECT COUNT(*) FROM cashflow WHERE " + condition)) {
+    public boolean hasAfter(LocalDate date) {
+        return hasData("tanggal > :date", date.toString());
+    }
 
-            ps.setString(1, value);
+    private boolean hasData(String condition, String value) {
+        try (Session session = HibernateUtil.open()) {
+            Long count = session.createQuery(
+                "select count(c) from Cashflow c where " + condition,
+                Long.class
+            ).setParameter("date", value).uniqueResult();
 
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() && rs.getInt(1) > 0;
-            }
+            return count != null && count > 0;
         }
     }
 
     public void save(Integer id, String jenis, LocalDate tanggal,
-                     String nama, double biaya, String kategori)
-                     throws SQLException {
-
-        try (Connection c = Database.getConnection()) {
-            if (id == null) {
-                try (PreparedStatement ps = c.prepareStatement(
-                    "INSERT INTO cashflow" +
-                    "(jenis,tanggal,nama,biaya,kategori) VALUES(?,?,?,?,?)")) {
-
-                    ps.setString(1, jenis);
-                    ps.setString(2, tanggal.toString());
-                    ps.setString(3, nama);
-                    ps.setDouble(4, biaya);
-                    ps.setString(5, kategori);
-                    ps.executeUpdate();
-                }
-            } else {
-                try (PreparedStatement ps = c.prepareStatement(
-                    "UPDATE cashflow SET jenis=?,tanggal=?,nama=?," +
-                    "biaya=?,kategori=? WHERE id=?")) {
-
-                    ps.setString(1, jenis);
-                    ps.setString(2, tanggal.toString());
-                    ps.setString(3, nama);
-                    ps.setDouble(4, biaya);
-                    ps.setString(5, kategori);
-                    ps.setInt(6, id);
-                    ps.executeUpdate();
-                }
-            }
-        }
-    }
-
-    public void deleteEntry(int id) throws SQLException {
-        try (Connection c = Database.getConnection()) {
-            c.setAutoCommit(false);
+                     String nama, double biaya, String kategori) {
+        try (Session session = HibernateUtil.open()) {
+            Transaction tx = session.beginTransaction();
 
             try {
-                Integer transaksiId = null;
-                Integer pengadaanId = null;
-
-                try (PreparedStatement ps = c.prepareStatement(
-                    "SELECT transaksi_id,pengadaan_id FROM cashflow " +
-                    "WHERE id=?")) {
-
-                    ps.setInt(1, id);
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        if (rs.next()) {
-                            transaksiId = rs.getInt("transaksi_id");
-                            if (rs.wasNull()) transaksiId = null;
-
-                            pengadaanId = rs.getInt("pengadaan_id");
-                            if (rs.wasNull()) pengadaanId = null;
-                        }
-                    }
-                }
-
-                if (transaksiId != null) {
-                    int barangId = 0;
-                    int qty = 0;
-
-                    try (PreparedStatement ps = c.prepareStatement(
-                        "SELECT barang_id,jumlah FROM transaksi WHERE id=?")) {
-                        ps.setInt(1, transaksiId);
-
-                        try (ResultSet rs = ps.executeQuery()) {
-                            if (rs.next()) {
-                                barangId = rs.getInt("barang_id");
-                                qty = rs.getInt("jumlah");
-                            }
-                        }
-                    }
-
-                    try (PreparedStatement ps = c.prepareStatement(
-                        "DELETE FROM transaksi WHERE id=?")) {
-                        ps.setInt(1, transaksiId);
-                        ps.executeUpdate();
-                    }
-
-                    try (PreparedStatement ps = c.prepareStatement(
-                        "DELETE FROM cashflow WHERE transaksi_id=?")) {
-                        ps.setInt(1, transaksiId);
-                        ps.executeUpdate();
-                    }
-
-                    if (barangId > 0) {
-                        BarangDAO.adjustStock(c, barangId, qty);
-                    }
-                } else if (pengadaanId != null) {
-                    int barangId = 0;
-                    int qty = 0;
-
-                    try (PreparedStatement ps = c.prepareStatement(
-                        "SELECT barang_id,jumlah FROM pengadaan WHERE id=?")) {
-                        ps.setInt(1, pengadaanId);
-
-                        try (ResultSet rs = ps.executeQuery()) {
-                            if (rs.next()) {
-                                barangId = rs.getInt("barang_id");
-                                qty = rs.getInt("jumlah");
-                            }
-                        }
-                    }
-
-                    try (PreparedStatement ps = c.prepareStatement(
-                        "DELETE FROM pengadaan WHERE id=?")) {
-                        ps.setInt(1, pengadaanId);
-                        ps.executeUpdate();
-                    }
-
-                    try (PreparedStatement ps = c.prepareStatement(
-                        "DELETE FROM cashflow WHERE pengadaan_id=?")) {
-                        ps.setInt(1, pengadaanId);
-                        ps.executeUpdate();
-                    }
-
-                    if (barangId > 0) {
-                        BarangDAO.adjustStock(c, barangId, -qty);
-                    }
+                if (id == null) {
+                    session.persist(new Cashflow(
+                        jenis, tanggal.toString(), nama, biaya, kategori,
+                        null, null));
                 } else {
-                    try (PreparedStatement ps = c.prepareStatement(
-                        "DELETE FROM cashflow WHERE id=?")) {
-                        ps.setInt(1, id);
-                        ps.executeUpdate();
+                    Cashflow entry = session.get(Cashflow.class, id);
+
+                    if (entry == null) {
+                        throw new HibernateException(
+                            "Transaksi cashflow tidak ditemukan.");
                     }
+
+                    entry.jenis = jenis;
+                    entry.tanggal = tanggal.toString();
+                    entry.nama = nama;
+                    entry.biaya = biaya;
+                    entry.kategori = kategori;
                 }
 
-                c.commit();
-
-            } catch (SQLException e) {
-                c.rollback();
+                tx.commit();
+            } catch (RuntimeException e) {
+                tx.rollback();
                 throw e;
-            } finally {
-                c.setAutoCommit(true);
             }
         }
     }
 
-    public static void insertSale(Connection c, int transaksiId,
+    public void deleteEntry(int id) {
+        try (Session session = HibernateUtil.open()) {
+            Transaction tx = session.beginTransaction();
+
+            try {
+                Cashflow entry = session.get(Cashflow.class, id);
+
+                if (entry == null) {
+                    tx.commit();
+                    return;
+                }
+
+                if (entry.transaksiId != null) {
+                    Transaksi transaksi =
+                        session.get(Transaksi.class, entry.transaksiId);
+
+                    Integer barangId = null;
+                    int qty = 0;
+
+                    if (transaksi != null) {
+                        barangId = transaksi.barangId;
+                        qty = transaksi.jumlah;
+                    }
+
+                    session.createMutationQuery(
+                        "delete from Cashflow where transaksiId = :id"
+                    ).setParameter("id", entry.transaksiId)
+                     .executeUpdate();
+
+                    if (transaksi != null) {
+                        session.remove(transaksi);
+                    }
+
+                    if (barangId != null && barangId > 0) {
+                        BarangDAO.adjustStock(session, barangId, qty);
+                    }
+
+                } else if (entry.pengadaanId != null) {
+                    Pengadaan pengadaan =
+                        session.get(Pengadaan.class, entry.pengadaanId);
+
+                    Integer barangId = null;
+                    int qty = 0;
+
+                    if (pengadaan != null) {
+                        barangId = pengadaan.barangId;
+                        qty = pengadaan.jumlah;
+                    }
+
+                    session.createMutationQuery(
+                        "delete from Cashflow where pengadaanId = :id"
+                    ).setParameter("id", entry.pengadaanId)
+                     .executeUpdate();
+
+                    if (pengadaan != null) {
+                        session.remove(pengadaan);
+                    }
+
+                    if (barangId != null && barangId > 0) {
+                        BarangDAO.adjustStock(session, barangId, -qty);
+                    }
+
+                } else {
+                    session.remove(entry);
+                }
+
+                tx.commit();
+            } catch (RuntimeException e) {
+                tx.rollback();
+                throw e;
+            }
+        }
+    }
+
+    public static void insertSale(Session session, int transaksiId,
                                   String tanggal, String nama,
-                                  double total) throws SQLException {
-        try (PreparedStatement ps = c.prepareStatement(
-            "INSERT INTO cashflow" +
-            "(jenis,tanggal,nama,biaya,kategori,transaksi_id) " +
-            "VALUES('PEMASUKAN',?,?,?,'penjualan',?)")) {
-
-            ps.setString(1, tanggal);
-            ps.setString(2, nama);
-            ps.setDouble(3, total);
-            ps.setInt(4, transaksiId);
-            ps.executeUpdate();
-        }
+                                  double total) {
+        session.persist(new Cashflow(
+            Cashflow.PEMASUKAN, tanggal, nama, total, "penjualan",
+            transaksiId, null));
     }
 
-    public static void updateSale(Connection c, int transaksiId,
+    public static void updateSale(Session session, int transaksiId,
                                   String tanggal, String nama,
-                                  double total) throws SQLException {
-        try (PreparedStatement ps = c.prepareStatement(
-            "UPDATE cashflow SET tanggal=?,nama=?,biaya=? " +
-            "WHERE transaksi_id=?")) {
+                                  double total) {
+        List<Cashflow> entries = session.createQuery(
+            "from Cashflow where transaksiId = :id", Cashflow.class
+        ).setParameter("id", transaksiId).getResultList();
 
-            ps.setString(1, tanggal);
-            ps.setString(2, nama);
-            ps.setDouble(3, total);
-            ps.setInt(4, transaksiId);
-
-            if (ps.executeUpdate() == 0) {
-                insertSale(c, transaksiId, tanggal, nama, total);
-            }
+        if (entries.isEmpty()) {
+            insertSale(session, transaksiId, tanggal, nama, total);
+            return;
         }
+
+        Cashflow entry = entries.get(0);
+        entry.jenis = Cashflow.PEMASUKAN;
+        entry.tanggal = tanggal;
+        entry.nama = nama;
+        entry.biaya = total;
+        entry.kategori = "penjualan";
     }
 
-    public static void deleteSale(Connection c, int transaksiId)
-                                  throws SQLException {
-        try (PreparedStatement ps = c.prepareStatement(
-            "DELETE FROM cashflow WHERE transaksi_id=?")) {
-            ps.setInt(1, transaksiId);
-            ps.executeUpdate();
-        }
+    public static void deleteSale(Session session, int transaksiId) {
+        session.createMutationQuery(
+            "delete from Cashflow where transaksiId = :id"
+        ).setParameter("id", transaksiId).executeUpdate();
     }
 
-    public static void insertPengadaan(Connection c, int pengadaanId,
+    public static void insertPengadaan(Session session, int pengadaanId,
                                        String tanggal, String nama,
-                                       double total) throws SQLException {
-        try (PreparedStatement ps = c.prepareStatement(
-            "INSERT INTO cashflow" +
-            "(jenis,tanggal,nama,biaya,kategori,pengadaan_id) " +
-            "VALUES('PENGELUARAN',?,?,?,'pengadaan',?)")) {
-
-            ps.setString(1, tanggal);
-            ps.setString(2, nama);
-            ps.setDouble(3, total);
-            ps.setInt(4, pengadaanId);
-            ps.executeUpdate();
-        }
+                                       double total) {
+        session.persist(new Cashflow(
+            Cashflow.PENGELUARAN, tanggal, nama, total, "pengadaan",
+            null, pengadaanId));
     }
 
-    public static void updatePengadaan(Connection c, int pengadaanId,
+    public static void updatePengadaan(Session session, int pengadaanId,
                                        String tanggal, String nama,
-                                       double total) throws SQLException {
-        try (PreparedStatement ps = c.prepareStatement(
-            "UPDATE cashflow SET tanggal=?,nama=?,biaya=?," +
-            "kategori='pengadaan' WHERE pengadaan_id=?")) {
+                                       double total) {
+        List<Cashflow> entries = session.createQuery(
+            "from Cashflow where pengadaanId = :id", Cashflow.class
+        ).setParameter("id", pengadaanId).getResultList();
 
-            ps.setString(1, tanggal);
-            ps.setString(2, nama);
-            ps.setDouble(3, total);
-            ps.setInt(4, pengadaanId);
-
-            if (ps.executeUpdate() == 0) {
-                insertPengadaan(c, pengadaanId, tanggal, nama, total);
-            }
+        if (entries.isEmpty()) {
+            insertPengadaan(session, pengadaanId, tanggal, nama, total);
+            return;
         }
+
+        Cashflow entry = entries.get(0);
+        entry.jenis = Cashflow.PENGELUARAN;
+        entry.tanggal = tanggal;
+        entry.nama = nama;
+        entry.biaya = total;
+        entry.kategori = "pengadaan";
     }
 
-    public static void deletePengadaan(Connection c, int pengadaanId)
-                                       throws SQLException {
-        try (PreparedStatement ps = c.prepareStatement(
-            "DELETE FROM cashflow WHERE pengadaan_id=?")) {
-            ps.setInt(1, pengadaanId);
-            ps.executeUpdate();
-        }
+    public static void deletePengadaan(Session session, int pengadaanId) {
+        session.createMutationQuery(
+            "delete from Cashflow where pengadaanId = :id"
+        ).setParameter("id", pengadaanId).executeUpdate();
     }
 }

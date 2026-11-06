@@ -8,7 +8,7 @@ import java.sql.Statement;
 
 public final class Database {
 
-    private static final String URL = "jdbc:sqlite:transaksi.db";
+    public static final String URL = "jdbc:sqlite:transaksi.db";
 
     private Database() {
     }
