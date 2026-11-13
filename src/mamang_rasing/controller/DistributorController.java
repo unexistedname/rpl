@@ -1,0 +1,155 @@
+package mamang_rasing.controller;
+
+import mamang_rasing.model.dao.BarangDAO;
+import mamang_rasing.model.Distributor;
+import mamang_rasing.model.dao.DistributorDAO;
+import mamang_rasing.model.Pengadaan;
+import mamang_rasing.model.dao.PengadaanDAO;
+import mamang_rasing.util.Period;
+import mamang_rasing.view.DistributorView;
+
+import javax.swing.JPanel;
+import org.hibernate.HibernateException;
+import java.time.LocalDate;
+import java.util.List;
+
+public class DistributorController {
+
+    private final DistributorView view;
+    private final PengadaanDAO pengadaanDAO = new PengadaanDAO();
+    private final DistributorDAO distributorDAO = new DistributorDAO();
+    private final BarangDAO barangDAO = new BarangDAO();
+
+    private LocalDate anchor = LocalDate.now();
+    private String mode = Period.HARIAN;
+
+    public DistributorController() {
+        view = new DistributorView(this);
+        refresh();
+    }
+
+    public JPanel getView() {
+        return view;
+    }
+
+    public void refresh() {
+        LocalDate start = Period.start(anchor, mode);
+        LocalDate end = Period.end(anchor, mode);
+
+        view.setPeriodLabel(Period.label(anchor, mode));
+
+        try {
+            view.setPrevEnabled(pengadaanDAO.hasBefore(start));
+            view.setNextEnabled(pengadaanDAO.hasAfter(end));
+            view.setData(
+                pengadaanDAO.findByPeriod(start, end),
+                distributorDAO.findAll()
+            );
+        } catch (HibernateException e) {
+            view.showError(e.getMessage());
+        }
+    }
+
+    public void previousPeriod() {
+        anchor = Period.start(anchor, mode).minusDays(1);
+        refresh();
+    }
+
+    public void nextPeriod() {
+        anchor = Period.end(anchor, mode).plusDays(1);
+        refresh();
+    }
+
+    public void setMode(String mode) {
+        this.mode = mode;
+        anchor = LocalDate.now();
+        refresh();
+    }
+
+    public void addPurchase() {
+        try {
+            view.showPurchaseDialog(
+                null,
+                barangDAO.findAll(),
+                distributorDAO.findAll()
+            );
+        } catch (HibernateException e) {
+            view.showError(e.getMessage());
+        }
+    }
+
+    public void editPurchase(int id) {
+        try {
+            Pengadaan purchase = pengadaanDAO.findById(id);
+            if (purchase == null) return;
+
+            view.showPurchaseDialog(
+                purchase,
+                barangDAO.findAll(),
+                distributorDAO.findAll()
+            );
+        } catch (HibernateException e) {
+            view.showError(e.getMessage());
+        }
+    }
+
+    public void savePurchase(Integer id, LocalDate date, int barangId,
+                             int jumlah, double harga, Integer distributorId) {
+        try {
+            pengadaanDAO.save(
+                id, date, barangId, jumlah, harga, distributorId);
+            anchor = date;
+            refresh();
+        } catch (HibernateException e) {
+            view.showError(e.getMessage());
+        }
+    }
+
+    public void deletePurchase(int id) {
+        if (!view.confirmDeletePurchase(id)) return;
+
+        try {
+            pengadaanDAO.delete(id);
+            refresh();
+        } catch (HibernateException e) {
+            view.showError(e.getMessage());
+        }
+    }
+
+    public void addDistributor() {
+        view.showDistributorDialog(null);
+    }
+
+    public void editDistributor(int id) {
+        try {
+            Distributor distributor = distributorDAO.findById(id);
+            if (distributor == null) return;
+            view.showDistributorDialog(distributor);
+        } catch (HibernateException e) {
+            view.showError(e.getMessage());
+        }
+    }
+
+    public void saveDistributor(Integer id, String nama) {
+        try {
+            distributorDAO.save(id, nama);
+            refresh();
+        } catch (HibernateException e) {
+            view.showInfo(
+                "Gagal menyimpan distributor. " +
+                "Pastikan nama distributor unik."
+            );
+        }
+    }
+
+    public void deleteDistributor(int id) {
+        if (!view.confirmDeleteDistributor(id)) return;
+
+        try {
+            distributorDAO.delete(id);
+            refresh();
+        } catch (HibernateException e) {
+            view.showWarning(e.getMessage());
+        }
+    }
+}
